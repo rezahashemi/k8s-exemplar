@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: website
+          env:
+            - name: "ENV"
+              value: "stage"
+      initContainers:
+        - name: tattler-agent
+          env:
+            - name: ENV
+              value: "stage"

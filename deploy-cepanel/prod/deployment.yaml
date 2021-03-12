@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ce-panel
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: ce-panel
+          env:
+            - name: "ENV"
+              value: "prod"
+      initContainers:
+        - name: tattler-agent
+          env:
+            - name: ENV
+              value: "prod"

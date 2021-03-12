@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-api-internal
+  labels:
+    app.kubernetes.io/name: client-api
+    app.kubernetes.io/component: internal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: client-api
+      app.kubernetes.io/component: internal
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: client-api
+        app.kubernetes.io/component: internal
+      annotations:
+        cnry.kubernetes.io/tattler-enabled: "true"
+    spec:
+      containers:
+        - name: client-api
+          image: client-api
+          imagePullPolicy: Always
+          env:
+            - name: USE_TATTLER
+              value: "1"
+            - name: STATSD_HOST
+              value: netdata-statsd.cluster-service-monitoring.svc.cluster.local
+            - name: STATSD_PORT
+              value: "8125"
+            - name: COMPONENT
+              value: "internal"
+            - name: INTERNAL_API
+              value: "True"
+            - name: ADMIN_ACCESS
+              value: "False"
+            - name: DASHBOARD
+              value: "True"
+            - name: DEBUG
+              value: "True"   
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "2"
+            limits:
+              memory: "512Mi"
+              cpu: "4"
+          volumeMounts:
+            - mountPath: /opt/client_api/tattler/
+              name: tattler-vol
+              subPath: client-api
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  [
+                    "/bin/sh",
+                    "-c",
+                    "sed -ibak 's/listen=16384/listen=128/;' /etc/uwsgi/client-api.ini",
+                  ]
+      initContainers:
+        - image: artifactory.service.canary.sh:5000/canary-docker/tattler-agent:dev-latest
+          name: tattler-agent
+          imagePullPolicy: Always
+          env:
+            - name: TATTLER_ARGS
+              value: --config /src/config/client-api.settings.py.hcl --once --vault-addr http://k8s-active-vault.cluster-service-consul.svc.cluster.local --consul-addr k8s-consul.cluster-service-consul.svc.cluster.local -vault-renew-token=false
+          volumeMounts:
+            - mountPath: /secrets
+              name: tattler-vol
+      volumes:
+        - emptyDir: {}
+          name: tattler-vol

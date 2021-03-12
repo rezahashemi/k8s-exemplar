@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-api-dashboard
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: client-api
+          env:
+            - name: ENV
+              value: "dev"
+      initContainers:
+        - name: tattler-agent
+          env:
+            - name: ENV
+              value: "dev"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-api-internal
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: client-api
+          env:
+            - name: ENV
+              value: "dev"
+      initContainers:
+        - name: tattler-agent
+          env:
+            - name: ENV
+              value: "dev"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client-api-external
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: client-api
+          env:
+            - name: ENV
+              value: "dev"
+      initContainers:
+        - name: tattler-agent
+          env:
+            - name: ENV
+              value: "dev"

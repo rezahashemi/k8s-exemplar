@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ce-panel
+namePrefix: dev-
+patchesStrategicMerge:
+  - deployment.yaml
+images:
+- name: ce-panel
+  newName: artifactory.service.canary.sh:5000/canary-docker/ce-panel:dev-11
+resources:
+- ../base
+- ingress.yaml

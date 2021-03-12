@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: website
+  annotations:
+    kubernetes.io/ingress.class: nginx-public
+spec:
+  rules:
+    - host: "website-k8s-prod.canaryis.com"
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: website
+              servicePort: express-node
+  tls:
+    - hosts:
+        - website-k8s-prod.canaryis.com
+      secretName: star-canaryis-com-cert

@@ -1,0 +1,174 @@
+---
+version: 2
+plan:
+  project-key: K8SWEBSITE
+  key: BUILDWEBSITE
+  name: Build Website
+  
+branches:
+  create: for-new-branch
+
+variables:
+  DOCKER_REGISTRY: artifactory.service.canary.sh:5000/cnry
+  DOCKER_HOST: tcp://docker:2375
+
+stages:
+  - Build:
+      - Build Website
+  - Create Kubernetes Manifests:
+      - Kustomize
+
+Build Website:
+  tasks:
+    - script: |
+        case $bamboo_repository_git_branch in
+        "main")
+          docker_tag="prod"
+          env="prod"
+        ;;
+        "master")
+          docker_tag="prod"
+          env="prod"
+        ;;
+        "dev")
+          docker_tag="dev"
+          env="dev"
+        ;;
+        "stage")
+          docker_tag="stage"
+          env="stage"
+        ;;    
+        "systems")
+          docker_tag="systems"
+          env="systems"
+        ;;          
+        *)
+          docker_tag=$(echo ${bamboo_repository_git_branch} | sed 's/\//-/g')
+          env="dev"   #override previous line because it makes no sense ;)
+                      #build number below keeps it unique
+        ;;
+        esac
+
+        export DOCKER_TAG=${docker_tag}-${bamboo_buildNumber}
+        docker build  -f Dockerfile --build-arg ENV=$ENV --tag ${bamboo_DOCKER_REGISTRY}/website:${DOCKER_TAG} .
+        docker push ${bamboo_DOCKER_REGISTRY}/website:${DOCKER_TAG}
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/docker:0.0.6
+      size: XSMALL
+      extra-containers:
+        - name: docker
+          image: docker:18.05-dind
+          size: LARGE
+
+Kustomize:
+  tasks:
+    - script: |
+        case $bamboo_repository_git_branch in
+        "main")
+          docker_tag="prod"
+          env="prod"
+        ;;
+        "master")
+          docker_tag="prod"
+          env="prod"
+        ;;
+        "dev")
+          docker_tag="dev"
+          env="dev"
+        ;;
+        "stage")
+          docker_tag="stage"
+          env="stage"
+        ;;    
+        "systems")
+          docker_tag="systems"
+          env="systems"
+        ;;          
+        *)
+          docker_tag=$(echo ${bamboo_repository_git_branch} | sed 's/\//-/g')
+          env="dev"   #override previous line because it makes no sense ;)
+                      #build number below keeps it unique
+        ;;
+        esac
+        export DOCKER_TAG=${docker_tag}-${bamboo_buildNumber}
+        export CURDIR=${PWD}
+        mkdir -p ${CURDIR}/artifact
+
+        echo "pre CD $env"
+        cd deploy/${env}
+        kustomize edit set image website=${bamboo_DOCKER_REGISTRY}/website:${DOCKER_TAG}
+        kustomize build . > ${CURDIR}/artifact/manifest.yaml
+  artifacts:
+    - name: k8s manifests
+      location: artifact/
+      pattern: "manifest.yaml"
+      required: false
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/docker:0.0.6
+      size: XSMALL
+
+---
+version: 2
+deployment:
+  name: Deploy Website
+  source-plan: K8SWEBSITE-BUILDWEBSITE
+
+release-naming: ${bamboo.planRepository.branch}-${bamboo.buildNumber}
+
+environments:
+  - Dev
+  - Stage
+  - Prod
+
+Dev:
+  triggers:
+    - build-success:
+        branch: dev
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-dev.git
+    FLUX_NAMESPACE: website
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL
+
+Stage:
+  triggers:
+    - build-success:
+        branch: stage
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-stage.git
+    FLUX_NAMESPACE: website
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL
+
+Prod:
+  triggers:
+    - build-success:
+        branch: master
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-prod.git
+    FLUX_NAMESPACE: website
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL

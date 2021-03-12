@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: client-api
+namePrefix: dev-
+patchesStrategicMerge:
+  - deployment.yaml
+
+# This is a placeholder and will be replaced at CI time
+images:
+- name: client-api
+  newName: artifactory.service.canary.sh:5000/canary-docker/client-api:latest
+resources:
+- ../base
+- ingress.yaml

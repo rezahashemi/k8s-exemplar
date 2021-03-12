@@ -1,0 +1,159 @@
+---
+version: 2
+plan:
+  project-key: CLIENTAPI
+  key: BUILDCLIENTAPI
+  name: Build Client API
+  
+branches:
+  create: for-new-branch
+
+variables:
+  DOCKER_REGISTRY: artifactory.service.canary.sh:5000/cnry
+  DOCKER_HOST: tcp://docker:2375
+
+stages:
+  - Build:
+      - Build Client API
+  - Create Kubernetes Manifests:
+      - Kustomize
+
+Build Client API:
+  tasks:
+    - script: |
+        case $bamboo_repository_git_branch in
+        "main")
+          env="prod"
+        ;;
+        "master")
+          env="prod"
+        ;;
+        *)
+          env=$(echo ${bamboo_repository_git_branch} | sed 's/\//-/g')
+          env='dev'  #TODO fix this override. This is to simplify tagging
+        ;;
+        esac
+
+        export DOCKER_TAG=${env}-${bamboo_buildNumber}
+        docker build  -f Dockerfile --build-arg GIT_COMMIT=$(git rev-parse HEAD) --tag ${bamboo_DOCKER_REGISTRY}/client-api:${DOCKER_TAG} .
+        docker push ${bamboo_DOCKER_REGISTRY}/client-api:${DOCKER_TAG}
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/docker:0.0.6
+      size: XSMALL
+      extra-containers:
+        - name: docker
+          image: docker:18.05-dind
+          size: LARGE
+
+Kustomize:
+  tasks:
+    - script: |
+        case $bamboo_repository_git_branch in
+        "main")
+          env="prod"
+        ;;
+        "master")
+          env="prod"
+        ;;
+        *)
+          env="$(echo ${bamboo_repository_git_branch} | sed 's/\//-/g')"
+          env="dev"
+        ;;
+        esac
+
+        export DOCKER_TAG=${env}-${bamboo_buildNumber}
+        export CURDIR=${PWD}
+        mkdir -p ${CURDIR}/artifact
+
+        cd deploy/${env}
+        kustomize edit set image client-api=${bamboo_DOCKER_REGISTRY}/client-api:${DOCKER_TAG}
+        kustomize build . > ${CURDIR}/artifact/manifest.yaml
+  artifacts:
+    - name: k8s manifests
+      location: artifact/
+      pattern: "manifest.yaml"
+      required: false
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/docker:0.0.6
+      size: XSMALL
+
+---
+version: 2
+deployment:
+  name: Deploy Client API
+  source-plan: CLIENTAPI-BUILDCLIENTAPI
+
+release-naming: ${bamboo.planRepository.branch}-${bamboo.buildNumber}
+
+environments:
+  - Demo
+  - Dev
+  - Stage
+  - Prod
+
+Demo:
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-dev.git
+    FLUX_NAMESPACE: client-api
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL
+
+Dev:
+  triggers:
+    - build-success:
+        branch: dev
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-dev.git
+    FLUX_NAMESPACE: client-api
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL
+
+Stage:
+  triggers:
+    - build-success:
+        branch: stage
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-stage.git
+    FLUX_NAMESPACE: client-api
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL
+
+Prod:
+  triggers:
+    - build-success:
+        branch: master
+  variables:
+    FLUX_REPO: git@github.com:cnry/flux-prod.git
+    FLUX_NAMESPACE: client-api
+  tasks:
+    - artifact-download:
+        destination: /tmp/artifact
+    - script: |
+        /app/gitops-release.sh
+  other:
+    pbc:
+      image: artifactory.service.canary.sh:5000/cnry/bamboo/builder/gitops:0.0.6
+      size: XSMALL
